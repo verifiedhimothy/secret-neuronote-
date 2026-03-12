@@ -1,30 +1,37 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/app.js b/app.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..3dbec892daa27afe18e71245f449444416ab7cca
+index 0000000000000000000000000000000000000000..cd3d261bdc3d3496668a974ac8bf3ffd36a0a1dd
 --- /dev/null
 +++ b/app.js
-@@ -0,0 +1,281 @@
+@@ -0,0 +1,368 @@
++const STORAGE_KEY = "neuronote-account";
++const DEFAULT_PHOTO =
++  "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=120&q=80";
++
 +const modeContent = {
 +  "gpt5.2": {
-+    title: "GPT 5.2 Mode",
 +    shortLabel: "GPT 5.2",
-+    response: "Fast + accurate answer:",
-+    delay: 900
++    delay: 900,
++    modeInfo: "GPT 5.2 is optimized for fast, accurate, balanced responses."
 +  },
 +  "think-deep": {
-+    title: "Think Deeper Mode",
 +    shortLabel: "Think Deeper",
-+    response: "Deep analysis after longer reasoning:",
-+    delay: 20900
++    delay: 20900,
++    modeInfo: "Think Deeper Mode takes more time for deeper analysis and reasoning."
 +  },
 +  study: {
-+    title: "Study Mode",
 +    shortLabel: "Study",
-+    response: "Study-focused breakdown:",
-+    delay: 1200
++    delay: 1200,
++    modeInfo: "Study Mode explains concepts step-by-step like a tutor."
 +  }
 +};
++
++const authScreen = document.getElementById("auth-screen");
++const appShell = document.getElementById("app-shell");
++const signInForm = document.getElementById("signin-form");
++const signInName = document.getElementById("signin-name");
++const signInPhoto = document.getElementById("signin-photo");
 +
 +const messages = document.getElementById("messages");
 +const chatForm = document.getElementById("chat-form");
@@ -32,49 +39,96 @@ index 0000000000000000000000000000000000000000..3dbec892daa27afe18e71245f4494444
 +const newChatBtn = document.getElementById("new-chat");
 +const historyList = document.getElementById("history-list");
 +const profileName = document.getElementById("profile-name");
++const profilePhoto = document.getElementById("profile-photo");
 +const modeToggle = document.getElementById("mode-toggle");
 +const modeMenu = document.getElementById("mode-menu");
 +const modeOptions = document.querySelectorAll(".mode-option");
 +const attachButton = document.getElementById("attach-button");
 +const filePicker = document.getElementById("file-picker");
-+const sendButton = document.getElementById("send-button");
-+const stopButton = document.getElementById("stop-button");
-+
-+const requiredElements = [
-+  messages,
-+  chatForm,
-+  promptInput,
-+  newChatBtn,
-+  historyList,
-+  profileName,
-+  modeToggle,
-+  modeMenu,
-+  attachButton,
-+  filePicker,
-+  sendButton,
-+  stopButton
-+];
-+
-+if (requiredElements.some((el) => !el)) {
-+  throw new Error("Neuro Note failed to initialize: missing required DOM elements.");
-+}
++const actionButton = document.getElementById("action-button");
 +
 +let activeMode = "gpt5.2";
 +let activeChatId = null;
 +let pendingGeneration = null;
 +const chats = [];
 +
++function createChatId() {
++  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
++  return `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
++}
++
 +function accountName() {
-+  return profileName.textContent.trim() || "Himothy";
++  return profileName.textContent.trim() || "Account";
 +}
 +
 +function neuroLogoHTML() {
 +  return document.getElementById("neuro-logo-template").innerHTML;
 +}
 +
++function limitWords(text, maxWords) {
++  return text.split(/\s+/).slice(0, maxWords).join(" ");
++}
++
++function aiGenerateTitle(prompt, modeKey) {
++  const cleaned = prompt
++    .toLowerCase()
++    .replace(/[^a-z0-9\s]/g, " ")
++    .replace(/\s+/g, " ")
++    .trim();
++
++  const keywordTitles = [
++    [/\b(calculus|derivative|integral|algebra|equation|math)\b/, "Math Topic Support"],
++    [/\b(javascript|python|java|bug|code|coding|api|html|css)\b/, "Coding Topic Support"],
++    [/\b(study|exam|revision|learn|homework|school|college)\b/, "Study Topic Support"],
++    [/\b(startup|business|marketing|sales|brand|product)\b/, "Business Topic Support"],
++    [/\b(workout|fitness|diet|health|sleep)\b/, "Health Topic Support"],
++    [/\b(travel|trip|visa|flight|hotel)\b/, "Travel Topic Support"]
++  ];
++
++  for (const [pattern, title] of keywordTitles) {
++    if (pattern.test(cleaned)) {
++      if (modeKey === "study") {
++        return limitWords(`Study: ${title}`, 8);
++      }
++      return title;
++    }
++  }
++
++  const words = cleaned
++    .split(" ")
++    .filter((word) => word.length > 2)
++    .slice(0, 6)
++    .map((word) => word.charAt(0).toUpperCase() + word.slice(1));
++
++  if (!words.length) return "New Chat";
++
++  if (modeKey === "study") {
++    return limitWords(`Study: ${words.join(" ")}`, 8);
++  }
++
++  return limitWords(`${words.join(" ")} Discussion`, 8);
++}
++
++function scheduleAiTitle(chat, prompt, modeKey) {
++  chat.title = "Generating title...";
++  renderHistory();
++
++  window.setTimeout(() => {
++    chat.title = aiGenerateTitle(prompt, modeKey);
++    renderHistory();
++  }, 2000);
++}
++
++function setActionButton(isGenerating) {
++  actionButton.textContent = isGenerating ? "■" : "➤";
++  actionButton.classList.toggle("stop", isGenerating);
++  actionButton.setAttribute("aria-label", isGenerating ? "Stop generating" : "Send message");
++}
++
 +function renderHero() {
-+  const current = chats.find((chat) => chat.id === activeChatId);
-+  if (!current || current.messages.length) return;
++  const currentChat = chats.find((chat) => chat.id === activeChatId);
++  if (!currentChat || currentChat.messages.length) return;
++
 +  messages.innerHTML = `
 +    <section class="hero">
 +      <div class="hero-logo">${neuroLogoHTML()}</div>
@@ -92,29 +146,20 @@ index 0000000000000000000000000000000000000000..3dbec892daa27afe18e71245f4494444
 +  return row;
 +}
 +
-+function guessTitle(prompt) {
-+  const text = prompt.toLowerCase();
-+  if (text.includes("math") || text.includes("equation")) return "Math Help";
-+  if (text.includes("code") || text.includes("javascript") || text.includes("python")) return "Coding Task";
-+  if (text.includes("study") || text.includes("exam")) return "Study Plan";
-+  if (text.includes("business") || text.includes("startup")) return "Business Ideas";
-+  return prompt.split(" ").slice(0, 3).join(" ") || "New Chat";
-+}
-+
 +function renderHistory() {
 +  historyList.innerHTML = "";
 +  chats.forEach((chat) => {
-+    const li = document.createElement("li");
-+    li.textContent = chat.title;
-+    li.classList.toggle("active", chat.id === activeChatId);
-+    li.addEventListener("click", () => switchChat(chat.id));
-+    historyList.append(li);
++    const item = document.createElement("li");
++    item.textContent = chat.title;
++    item.classList.toggle("active", chat.id === activeChatId);
++    item.addEventListener("click", () => switchChat(chat.id));
++    historyList.append(item);
 +  });
 +}
 +
 +function renderActiveChatMessages() {
 +  messages.innerHTML = "";
-+  const chat = chats.find((item) => item.id === activeChatId);
++  const chat = chats.find((entry) => entry.id === activeChatId);
 +  if (!chat) return;
 +  if (!chat.messages.length) {
 +    renderHero();
@@ -124,110 +169,114 @@ index 0000000000000000000000000000000000000000..3dbec892daa27afe18e71245f4494444
 +}
 +
 +function switchChat(chatId) {
-+  if (pendingGeneration) {
-+    stopGeneration(true);
-+  }
++  if (pendingGeneration) stopGeneration(true);
 +  activeChatId = chatId;
 +  renderHistory();
 +  renderActiveChatMessages();
 +}
 +
-+function createChatId() {
-+  if (globalThis.crypto?.randomUUID) {
-+    return globalThis.crypto.randomUUID();
-+  }
-+
-+  return `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-+}
-+
 +function startNewChat() {
-+  if (pendingGeneration) {
-+    stopGeneration(true);
-+  }
++  if (pendingGeneration) stopGeneration(true);
 +  const id = createChatId();
 +  chats.unshift({ id, title: `Chat ${chats.length + 1}`, messages: [] });
 +  switchChat(id);
 +}
 +
-+function setMode(modeKey) {
-+  activeMode = modeKey;
-+  modeToggle.textContent = `${modeContent[modeKey].shortLabel} ▾`;
-+}
-+
 +function appendThinkingIndicator() {
-+  const wrapper = document.createElement("article");
-+  wrapper.className = "message-row bot thinking";
-+  wrapper.innerHTML = `${neuroLogoHTML()}<p></p>`;
-+  messages.append(wrapper);
++  const row = document.createElement("article");
++  row.className = "message-row bot thinking";
++  row.innerHTML = `${neuroLogoHTML()}<p></p>`;
++  messages.append(row);
 +  messages.scrollTop = messages.scrollHeight;
-+  return wrapper;
-+}
-+
-+function setGenerating(isGenerating) {
-+  sendButton.hidden = isGenerating;
-+  stopButton.hidden = !isGenerating;
++  return row;
 +}
 +
 +function stopGeneration(fromSwitch = false) {
 +  if (!pendingGeneration) return;
-+  const { timeoutId, thinkingEl, promptText, chatId, userMessageIndex, oldTitle } = pendingGeneration;
 +
++  const { timeoutId, thinkingEl, promptText, chatId } = pendingGeneration;
 +  window.clearTimeout(timeoutId);
 +  thinkingEl.remove();
 +
-+  const chat = chats.find((item) => item.id === chatId);
-+  if (chat && chat.messages[userMessageIndex]?.sender === "user") {
-+    chat.messages.splice(userMessageIndex, 1);
-+    if (!chat.messages.length) {
-+      chat.title = oldTitle;
-+    }
++  const chat = chats.find((entry) => entry.id === chatId);
++  if (chat) {
++    chat.messages.push({ sender: "bot", text: "NEURO NOTE STOPPED" });
 +  }
 +
 +  pendingGeneration = null;
-+  setGenerating(false);
++  setActionButton(false);
 +
 +  if (!fromSwitch && chatId === activeChatId) {
 +    promptInput.value = promptText;
 +    renderActiveChatMessages();
 +    promptInput.focus();
-+  } else {
-+    renderHistory();
++    return;
++  }
++
++  renderHistory();
++}
++
++function generateBotReplyText(prompt, modeKey) {
++  const normalized = prompt.toLowerCase();
++
++  if (/what does|how does|explain/.test(normalized) && /gpt\s*5\.2|think deeper|study mode|mode/.test(normalized)) {
++    if (normalized.includes("gpt") || normalized.includes("5.2")) return modeContent["gpt5.2"].modeInfo;
++    if (normalized.includes("think")) return modeContent["think-deep"].modeInfo;
++    if (normalized.includes("study")) return modeContent.study.modeInfo;
++    return modeContent[modeKey].modeInfo;
++  }
++
++  if (modeKey === "study") return `Let’s break this down clearly: ${prompt}`;
++  if (modeKey === "think-deep") return `After deeper analysis, here’s the best answer: ${prompt}`;
++  return prompt;
++}
++
++function loadStoredAccount() {
++  try {
++    const raw = localStorage.getItem(STORAGE_KEY);
++    if (!raw) return null;
++    return JSON.parse(raw);
++  } catch {
++    return null;
 +  }
 +}
 +
-+modeToggle.addEventListener("click", () => {
-+  const open = modeMenu.hidden;
-+  modeMenu.hidden = !open;
-+  modeToggle.setAttribute("aria-expanded", String(open));
-+});
++function saveAccount(name, photo) {
++  const payload = { name, photo: photo || DEFAULT_PHOTO };
++  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
++  return payload;
++}
 +
-+modeOptions.forEach((button) => {
-+  button.addEventListener("click", () => {
-+    setMode(button.dataset.mode);
-+    modeMenu.hidden = true;
-+    modeToggle.setAttribute("aria-expanded", "false");
-+  });
-+});
++function applyAccount(account) {
++  profileName.textContent = account.name;
++  profilePhoto.src = account.photo || DEFAULT_PHOTO;
++}
 +
-+attachButton.addEventListener("click", () => {
-+  filePicker.click();
-+});
-+
-+filePicker.addEventListener("change", () => {
-+  const fileCount = filePicker.files?.length ?? 0;
-+  if (!fileCount || !activeChatId) return;
-+  const text = `${fileCount} file${fileCount > 1 ? "s" : ""} selected for bot context.`;
-+  const notice = { sender: "user", text };
-+  const chat = chats.find((item) => item.id === activeChatId);
-+  chat.messages.push(notice);
-+  renderActiveChatMessages();
-+  filePicker.value = "";
-+});
++function showChatUI() {
++  authScreen.classList.add("hidden");
++  appShell.classList.remove("hidden");
++  if (!chats.length) {
++    startNewChat();
++  } else {
++    renderActiveChatMessages();
++  }
++}
 +
 +newChatBtn.addEventListener("click", startNewChat);
 +
-+stopButton.addEventListener("click", () => {
-+  stopGeneration(false);
++modeToggle.addEventListener("click", () => {
++  const shouldOpen = modeMenu.hidden;
++  modeMenu.hidden = !shouldOpen;
++  modeToggle.setAttribute("aria-expanded", String(shouldOpen));
++});
++
++modeOptions.forEach((option) => {
++  option.addEventListener("click", () => {
++    activeMode = option.dataset.mode;
++    modeToggle.textContent = `${modeContent[activeMode].shortLabel} ▾`;
++    modeMenu.hidden = true;
++    modeToggle.setAttribute("aria-expanded", "false");
++  });
 +});
 +
 +document.addEventListener("click", (event) => {
@@ -236,56 +285,94 @@ index 0000000000000000000000000000000000000000..3dbec892daa27afe18e71245f4494444
 +  modeToggle.setAttribute("aria-expanded", "false");
 +});
 +
++attachButton.addEventListener("click", () => filePicker.click());
++
++filePicker.addEventListener("change", () => {
++  const fileCount = filePicker.files?.length ?? 0;
++  if (!fileCount || !activeChatId) return;
++
++  const chat = chats.find((entry) => entry.id === activeChatId);
++  if (!chat) return;
++
++  chat.messages.push({
++    sender: "user",
++    text: `${fileCount} file${fileCount > 1 ? "s" : ""} selected for bot context.`
++  });
++  renderActiveChatMessages();
++  filePicker.value = "";
++});
++
++actionButton.addEventListener("click", (event) => {
++  if (!pendingGeneration) return;
++  event.preventDefault();
++  stopGeneration(false);
++});
++
 +chatForm.addEventListener("submit", (event) => {
 +  event.preventDefault();
-+  if (pendingGeneration) return;
++  if (pendingGeneration || !activeChatId) return;
 +
 +  const prompt = promptInput.value.trim();
-+  if (!prompt || !activeChatId) return;
++  if (!prompt) return;
 +
-+  const chat = chats.find((item) => item.id === activeChatId);
-+  const oldTitle = chat.title;
-+  const userMessage = { sender: "user", text: prompt };
++  const chat = chats.find((entry) => entry.id === activeChatId);
++  if (!chat) return;
 +
 +  if (!chat.messages.length) {
-+    chat.title = guessTitle(prompt);
-+    renderHistory();
++    scheduleAiTitle(chat, prompt, activeMode);
 +  }
 +
-+  chat.messages.push(userMessage);
-+  const userMessageIndex = chat.messages.length - 1;
++  chat.messages.push({ sender: "user", text: prompt });
 +  renderActiveChatMessages();
 +
 +  const thinkingEl = appendThinkingIndicator();
-+  const active = modeContent[activeMode];
-+  const botReply = { sender: "bot", text: `${active.response} ${prompt}` };
++  const selectedMode = modeContent[activeMode];
++  const botReply = {
++    sender: "bot",
++    text: generateBotReplyText(prompt, activeMode)
++  };
 +
-+  setGenerating(true);
++  setActionButton(true);
 +
 +  const timeoutId = window.setTimeout(() => {
 +    thinkingEl.remove();
 +    chat.messages.push(botReply);
 +    appendMessageToDom(botReply);
 +    pendingGeneration = null;
-+    setGenerating(false);
-+  }, active.delay);
++    setActionButton(false);
++  }, selectedMode.delay);
 +
 +  pendingGeneration = {
 +    timeoutId,
 +    thinkingEl,
 +    promptText: prompt,
-+    chatId: activeChatId,
-+    userMessageIndex,
-+    oldTitle
++    chatId: activeChatId
 +  };
 +
 +  chatForm.reset();
 +  promptInput.focus();
 +});
 +
-+setGenerating(false);
-+setMode(activeMode);
-+startNewChat();
++signInForm.addEventListener("submit", (event) => {
++  event.preventDefault();
++  const name = signInName.value.trim();
++  if (!name) return;
++  const photo = signInPhoto.value.trim();
++  const account = saveAccount(name, photo);
++  applyAccount(account);
++  showChatUI();
++});
++
++setActionButton(false);
++
++const storedAccount = loadStoredAccount();
++if (storedAccount?.name) {
++  applyAccount(storedAccount);
++  showChatUI();
++} else {
++  authScreen.classList.remove("hidden");
++  appShell.classList.add("hidden");
++}
  
 EOF
 )
