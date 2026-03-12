@@ -1,10 +1,10 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/index.html b/index.html
 new file mode 100644
-index 0000000000000000000000000000000000000000..e7bd4cfb3f326d698768a919e274a86a2c73af1d
+index 0000000000000000000000000000000000000000..a9843b50dc5a436f301da669af4906ffd62a1839
 --- /dev/null
 +++ b/index.html
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,107 @@
 +<!doctype html>
 +<html lang="en">
 +  <head>
@@ -14,62 +14,85 @@ index 0000000000000000000000000000000000000000..e7bd4cfb3f326d698768a919e274a86a
 +    <link rel="stylesheet" href="styles.css" />
 +  </head>
 +  <body>
-+    <main class="app-shell">
++    <main id="auth-screen" class="auth-screen">
++      <section class="auth-card" aria-label="Sign in">
++        <div class="hero-logo"> 
++          <span class="mini-logo" aria-hidden="true">
++            <svg viewBox="0 0 120 120" role="img" aria-label="Neuro Note logo">
++              <circle cx="60" cy="60" r="16" />
++              <circle cx="25" cy="30" r="10" />
++              <circle cx="95" cy="28" r="10" />
++              <circle cx="22" cy="88" r="10" />
++              <circle cx="98" cy="90" r="10" />
++              <path d="M35 35L48 48M85 34L72 48M32 84L47 70M88 86L73 72M25 30L22 88M95 28L98 90" />
++            </svg>
++          </span>
++        </div>
++        <h1>Welcome to Neuro Note</h1>
++        <p>Sign in with Google to continue.</p>
++        <form id="signin-form" class="signin-form">
++          <label for="signin-name" class="sr-only">Google account name</label>
++          <input id="signin-name" type="text" placeholder="Google account name" required />
++          <label for="signin-photo" class="sr-only">Google profile photo URL</label>
++          <input id="signin-photo" type="url" placeholder="Google profile photo URL (optional)" />
++          <button id="google-signin" type="submit">Continue with Google</button>
++        </form>
++      </section>
++    </main>
++
++    <main id="app-shell" class="app-shell hidden">
 +      <aside class="sidebar">
 +        <div class="profile-card">
 +          <img
 +            id="profile-photo"
-+            src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80"
-+            alt="Neuro Note profile"
++            src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=120&q=80"
++            alt="Account profile picture"
 +          />
 +          <div>
 +            <p class="profile-label">Neuro Note account</p>
-+            <strong id="profile-name">Himothy</strong>
++            <strong id="profile-name">Account</strong>
 +          </div>
 +        </div>
 +
-+        <button id="new-chat" class="secondary" type="button">New Chat</button>
++        <button id="new-chat" class="secondary" type="button"><span class="plus-circle" aria-hidden="true">+</span><span>New Chat</span></button>
 +
 +        <h2>Chats</h2>
 +        <ul id="history-list" class="history-list"></ul>
 +      </aside>
 +
-+      <section class="chat-layout">
-+        <section class="chat-panel" aria-label="Chat area">
-+          <div id="messages" class="messages"></div>
++      <section class="chat-panel" aria-label="Chat area">
++        <div id="messages" class="messages"></div>
 +
-+          <form id="chat-form" class="composer">
-+            <button id="attach-button" class="attach-button" type="button" aria-label="Files and attachments">
-+              <span aria-hidden="true">📎</span>
-+              <span>Files</span>
-+            </button>
-+            <input id="file-picker" type="file" multiple hidden />
++        <form id="chat-form" class="composer">
++          <button id="attach-button" class="attach-button" type="button" aria-label="Files and attachments">
++            <span aria-hidden="true">📎</span>
++            <span>Files & Attachments</span>
++          </button>
++          <input id="file-picker" type="file" multiple hidden />
 +
-+            <label for="prompt" class="sr-only">Type your message</label>
-+            <textarea id="prompt" placeholder="Message Neuro Note" rows="1" required></textarea>
++          <label for="prompt" class="sr-only">Type your message</label>
++          <textarea id="prompt" placeholder="Message Neuro Note" rows="1" required></textarea>
 +
-+            <div class="mode-dropdown">
-+              <button id="mode-toggle" class="mode-toggle" type="button" aria-expanded="false">GPT 5.2 ▾</button>
-+              <div id="mode-menu" class="mode-menu" hidden>
-+                <button class="mode-option" data-mode="gpt5.2" type="button">
-+                  <span>GPT 5.2 Mode</span>
-+                  <small>Fast, balanced and accurate.</small>
-+                </button>
-+                <button class="mode-option" data-mode="think-deep" type="button">
-+                  <span>Think Deeper Mode</span>
-+                  <small>Longer thinking for deeper analysis.</small>
-+                </button>
-+                <button class="mode-option" data-mode="study" type="button">
-+                  <span>Study Mode</span>
-+                  <small>Tutor style breakdown and learning help.</small>
-+                </button>
-+              </div>
++          <div class="mode-dropdown">
++            <button id="mode-toggle" class="mode-toggle" type="button" aria-expanded="false">GPT 5.2 ▾</button>
++            <div id="mode-menu" class="mode-menu" hidden>
++              <button class="mode-option" data-mode="gpt5.2" type="button">
++                <span>GPT 5.2 Mode</span>
++                <small>Fast, accurate, and balanced responses.</small>
++              </button>
++              <button class="mode-option" data-mode="think-deep" type="button">
++                <span>Think Deeper Mode</span>
++                <small>Slower but deeper analysis and reasoning.</small>
++              </button>
++              <button class="mode-option" data-mode="study" type="button">
++                <span>Study Mode</span>
++                <small>Clear tutor-style learning breakdown.</small>
++              </button>
 +            </div>
++          </div>
 +
-+            <button id="send-button" type="submit" aria-label="Send message">➤</button>
-+            <button id="stop-button" type="button" aria-label="Stop generating" hidden>■</button>
-+          </form>
-+        </section>
++          <button id="action-button" type="submit" aria-label="Send message">➤</button>
++        </form>
 +      </section>
 +    </main>
 +
