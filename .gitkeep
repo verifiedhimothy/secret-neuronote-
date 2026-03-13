@@ -1,0 +1,521 @@
+import { useState, useRef, useEffect } from "react";
+ 
+const Logo = ({ size = 36 }) => (
+  <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" rx="22" fill="url(#lg)"/>
+    <defs>
+      <linearGradient id="lg" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#c084fc"/><stop offset="1" stopColor="#7c3aed"/>
+      </linearGradient>
+    </defs>
+    <circle cx="50" cy="15" r="7" fill="white" fillOpacity="0.95"/>
+    <circle cx="85" cy="62" r="7" fill="white" fillOpacity="0.95"/>
+    <circle cx="15" cy="62" r="7" fill="white" fillOpacity="0.95"/>
+    <circle cx="32" cy="88" r="5.5" fill="white" fillOpacity="0.75"/>
+    <circle cx="68" cy="88" r="5.5" fill="white" fillOpacity="0.75"/>
+    <circle cx="50" cy="50" r="7" fill="white" fillOpacity="0.9"/>
+    <line x1="50" y1="22" x2="50" y2="43" stroke="white" strokeWidth="2.5" strokeOpacity="0.8"/>
+    <line x1="78" y1="60" x2="57" y2="52" stroke="white" strokeWidth="2.5" strokeOpacity="0.8"/>
+    <line x1="22" y1="60" x2="43" y2="52" stroke="white" strokeWidth="2.5" strokeOpacity="0.8"/>
+    <line x1="43" y1="56" x2="34" y2="83" stroke="white" strokeWidth="2" strokeOpacity="0.6"/>
+    <line x1="57" y1="56" x2="66" y2="83" stroke="white" strokeWidth="2" strokeOpacity="0.6"/>
+    <line x1="34" y1="83" x2="66" y2="83" stroke="white" strokeWidth="1.8" strokeOpacity="0.4"/>
+    <line x1="15" y1="62" x2="85" y2="62" stroke="white" strokeWidth="1.5" strokeOpacity="0.25"/>
+  </svg>
+);
+ 
+const MODES = [
+  {
+    id: "study", label: "Study Mode", icon: "📚", desc: "Structured learning & clear explanations", color: "#7c3aed",
+    systemPrompt: `You are Neuro Note in Study Mode — an exceptionally intelligent academic tutor. Make every topic deeply understandable.
+ 
+When answering:
+🎯 Start with a concise hook explaining WHY this matters
+📖 Use **bold headers** to organise sections clearly
+💡 Use real-world analogies and vivid concrete examples
+🔢 Show step-by-step reasoning where relevant
+🧩 Connect ideas to things already known
+✅ End with key takeaways or a "test yourself" question
+🌍 Use emojis to make responses scannable and engaging
+ 
+Format beautifully with **bold** for key terms, numbered/bullet lists. Be the most brilliant teacher imaginable — not a dictionary. Always give thorough, genuinely helpful, deeply informative answers with real substance. Never give generic or vague responses.`
+  },
+  {
+    id: "think", label: "Think Deeper", icon: "🧠", desc: "Deep research & multi-angle analysis", color: "#0ea5e9",
+    systemPrompt: `You are Neuro Note in Think Deeper mode — an elite research intelligence engine for rigorous intellectual work.
+ 
+Your approach:
+🔬 Conduct thorough, multi-dimensional analysis of every question
+🧵 Trace root causes, systemic implications, and second-order effects
+⚖️ Present mainstream, contrarian, and edge-case perspectives
+📊 Reference data, historical precedents, expert consensus, and known debates  
+🔍 Identify hidden assumptions, logical gaps, and nuances others miss
+🌐 Connect across disciplines: philosophy, science, economics, psychology, history
+💎 Synthesise everything into sharp, original, actionable insight
+📝 Structure like a well-researched essay with clear **bold headers** and sections
+ 
+You are the most rigorous thinker in the room. Go deeper, wider, and sharper than expected. Optimised for research, complex analysis, philosophical inquiry, and strategic thinking. Use emojis for major section markers. Always be comprehensive and genuinely illuminating.`
+  },
+  {
+    id: "gpt52", label: "GPT 5.2", icon: "⚡", desc: "Fast, powerful & precise responses", color: "#10b981",
+    systemPrompt: `You are Neuro Note powered by GPT 5.2 — the fastest, most powerful mode.
+ 
+Your style:
+⚡ Get to the point — no fluff, no filler
+🎯 Be precise, accurate, and authoritative
+💪 Give confident, expert-level answers with real depth
+📌 Use concise bullet points or short sharp paragraphs
+🧠 Share expert-level insight freely — don't hold back
+✨ Use emojis effectively but sparingly
+🔥 For coding, creative, or analytical tasks — deliver excellence fast
+ 
+Combine depth with brevity — every word earns its place. Never ramble. Always deliver maximum value. You are exceptionally intelligent and always produce high-quality, substantive responses.`
+  }
+];
+ 
+function renderMd(text) {
+  const lines = text.split('\n');
+  const els = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^### (.+)/.test(line)) {
+      els.push(<h3 key={i} style={{margin:"14px 0 5px",fontSize:14,fontWeight:700,color:"#e2d9f3"}}>{line.replace(/^### /,'')}</h3>);
+    } else if (/^## (.+)/.test(line)) {
+      els.push(<h2 key={i} style={{margin:"16px 0 7px",fontSize:16,fontWeight:700,color:"#d8b4fe"}}>{line.replace(/^## /,'')}</h2>);
+    } else if (/^# (.+)/.test(line)) {
+      els.push(<h1 key={i} style={{margin:"18px 0 9px",fontSize:19,fontWeight:800,color:"#c084fc"}}>{line.replace(/^# /,'')}</h1>);
+    } else if (/^[\*\-] (.+)/.test(line)) {
+      els.push(<div key={i} style={{display:"flex",gap:8,margin:"3px 0",paddingLeft:6}}><span style={{color:"#a855f7",flexShrink:0}}>{"•"}</span><span style={{lineHeight:1.65}}>{inlineFmt(line.replace(/^[\*\-] /,''))}</span></div>);
+    } else if (/^\d+\. (.+)/.test(line)) {
+      const num = line.match(/^(\d+)\./)[1];
+      els.push(<div key={i} style={{display:"flex",gap:8,margin:"3px 0",paddingLeft:6}}><span style={{color:"#a855f7",flexShrink:0,minWidth:18,fontWeight:600}}>{num}.</span><span style={{lineHeight:1.65}}>{inlineFmt(line.replace(/^\d+\. /,''))}</span></div>);
+    } else if (/^```/.test(line)) {
+      const code = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) { code.push(lines[i]); i++; }
+      els.push(<pre key={i} style={{background:"rgba(0,0,0,0.45)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"12px 14px",overflowX:"auto",fontSize:12,fontFamily:"monospace",margin:"10px 0",color:"#a5f3fc",lineHeight:1.5}}>{code.join('\n')}</pre>);
+    } else if (line.trim() === '') {
+      els.push(<div key={i} style={{height:5}}/>);
+    } else {
+      els.push(<p key={i} style={{margin:"3px 0",lineHeight:1.7}}>{inlineFmt(line)}</p>);
+    }
+    i++;
+  }
+  return els;
+}
+ 
+function inlineFmt(text) {
+  const parts = [];
+  const re = /(\*\*(.+?)\*\*)|(`(.+?)`)/g;
+  let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    if (m[1]) parts.push(<strong key={m.index} style={{fontWeight:700,color:"#e9d5ff"}}>{m[2]}</strong>);
+    else parts.push(<code key={m.index} style={{background:"rgba(168,85,247,0.2)",padding:"1px 5px",borderRadius:4,fontSize:"0.88em",fontFamily:"monospace"}}>{m[4]}</code>);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts.length ? parts : text;
+}
+ 
+function FileChip({ file, onRemove }) {
+  const icon = file.type.startsWith("image/") ? "🖼️" : file.type === "application/pdf" ? "📄" : "📎";
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:6,background:"rgba(168,85,247,0.15)",border:"1px solid rgba(168,85,247,0.3)",borderRadius:8,padding:"4px 10px",fontSize:12,maxWidth:200}}>
+      <span>{icon}</span>
+      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{file.name}</span>
+      <span style={{color:"rgba(255,255,255,0.35)",fontSize:10,flexShrink:0}}>{(file.size/1024/1024).toFixed(1)}MB</span>
+      {onRemove && <button onClick={onRemove} style={{background:"none",border:"none",color:"rgba(255,255,255,0.4)",cursor:"pointer",fontSize:15,padding:"0 0 0 2px",lineHeight:1}}>{"×"}</button>}
+    </div>
+  );
+}
+ 
+export default function NeuroNote() {
+  const [screen, setScreen] = useState("signin");
+  const [googleUser, setGoogleUser] = useState(null);
+  const [signingIn, setSigningIn] = useState(false);
+  const [mode, setMode] = useState(MODES[2]);
+  const [conversations, setConversations] = useState([]);
+  const [activeConvId, setActiveConvId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [thinking, setThinking] = useState(false);
+  const [thinkTimer, setThinkTimer] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [attachments, setAttachments] = useState([]);
+  const abortRef = useRef(null);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+  const timerRef = useRef(null);
+  const fileInputRef = useRef(null);
+ 
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+ 
+  const [signInError, setSignInError] = useState("");
+ 
+  const handleGoogleSignIn = () => {
+    setSigningIn(true);
+    setSignInError("");
+    const existing = document.getElementById("gsi-script");
+    const doSignIn = () => {
+      try {
+        window.google.accounts.oauth2.initTokenClient({
+          client_id: "YOUR_GOOGLE_CLIENT_ID",
+          scope: "openid email profile",
+          callback: (resp) => {
+            if (resp.error) {
+              setSignInError("Sign-in was cancelled or failed. Please try again.");
+              setSigningIn(false);
+              return;
+            }
+            fetch(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${resp.access_token}`)
+              .then(r => r.json())
+              .then(info => {
+                if (!info.email) { setSignInError("Could not retrieve your Google account. Please try again."); setSigningIn(false); return; }
+                setGoogleUser({ name: info.name, email: info.email, picture: info.picture || null });
+                setScreen("chat");
+                setSigningIn(false);
+              })
+              .catch(() => { setSignInError("Failed to fetch your account info. Please try again."); setSigningIn(false); });
+          },
+          error_callback: () => { setSignInError("Google sign-in failed. Please try again."); setSigningIn(false); }
+        }).requestAccessToken({ prompt: "select_account" });
+      } catch(e) {
+        setSignInError("Google sign-in is unavailable. Make sure popups are allowed and try again.");
+        setSigningIn(false);
+      }
+    };
+    if (existing && window.google) { doSignIn(); return; }
+    const script = document.createElement("script");
+    script.id = "gsi-script";
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = doSignIn;
+    script.onerror = () => {
+      setSignInError("Could not load Google sign-in. Check your connection and try again.");
+      setSigningIn(false);
+    };
+    document.head.appendChild(script);
+  };
+ 
+  const handleFiles = (files) => {
+    const MAX = 30 * 1024 * 1024;
+    const valid = [];
+    for (const f of files) {
+      if (f.size > MAX) { alert(`"${f.name}" exceeds the 30MB file limit.`); continue; }
+      valid.push(f);
+    }
+    setAttachments(prev => [...prev, ...valid]);
+  };
+ 
+  const saveCurrentConv = (msgs) => {
+    if (!activeConvId) return;
+    setConversations(prev => prev.map(c => c.id === activeConvId ? { ...c, messages: msgs || messages } : c));
+  };
+ 
+  const newChat = () => {
+    saveCurrentConv();
+    const id = Date.now();
+    setConversations(prev => [{ id, title: "New conversation", messages: [] }, ...prev]);
+    setActiveConvId(id);
+    setMessages([]);
+    setAttachments([]);
+  };
+ 
+  const switchConv = (id) => {
+    saveCurrentConv();
+    const conv = conversations.find(c => c.id === id);
+    setActiveConvId(id);
+    setMessages(conv ? conv.messages : []);
+  };
+ 
+  const stopGeneration = () => {
+    if (abortRef.current) abortRef.current.abort();
+    clearInterval(timerRef.current);
+    setLoading(false); setThinking(false);
+  };
+ 
+  const sendMessage = async () => {
+    if ((!input.trim() && attachments.length === 0) || loading) return;
+    let convId = activeConvId;
+    if (!convId) {
+      convId = Date.now();
+      setConversations(prev => [{ id: convId, title: "New conversation", messages: [] }, ...prev]);
+      setActiveConvId(convId);
+    }
+    const content = input.trim();
+    const files = [...attachments];
+    const userMsg = { role: "user", content: content || ("Attached " + files.length + " file(s)"), files };
+    const newMsgs = [...messages, userMsg];
+    setMessages(newMsgs);
+    setInput("");
+    setAttachments([]);
+    if (inputRef.current) { inputRef.current.style.height = "auto"; }
+    setLoading(true);
+ 
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+ 
+    if (mode.id === "think") {
+      setThinking(true); setThinkTimer(0);
+      let t = 0;
+      timerRef.current = setInterval(() => { t++; setThinkTimer(t); if (t >= 15) { clearInterval(timerRef.current); setThinking(false); } }, 1000);
+      try {
+        await new Promise((res, rej) => {
+          const tid = setTimeout(res, 15000);
+          ctrl.signal.addEventListener("abort", () => { clearTimeout(tid); rej(new Error("aborted")); });
+        });
+      } catch (e) { setLoading(false); setThinking(false); clearInterval(timerRef.current); return; }
+      setThinking(false); clearInterval(timerRef.current);
+    }
+ 
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: ctrl.signal,
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: mode.systemPrompt,
+          messages: newMsgs.map(m => ({ role: m.role, content: m.content }))
+        })
+      });
+      const data = await res.json();
+      const reply = data.content && data.content[0] ? data.content[0].text : "Sorry, something went wrong. Please try again.";
+      const botMsg = { role: "assistant", content: reply, mode: mode.id };
+      const updated = [...newMsgs, botMsg];
+      setMessages(updated);
+      const title = (content || "File attachment").slice(0, 44) + ((content.length > 44) ? "…" : "");
+      setConversations(prev => prev.map(c => c.id === convId ? { ...c, title, messages: updated } : c));
+    } catch (e) {
+      if (e.name !== "AbortError") {
+        setMessages(prev => [...prev, { role: "assistant", content: "Something went wrong. Please try again.", mode: mode.id }]);
+      }
+    }
+    setLoading(false); abortRef.current = null;
+  };
+ 
+  const user = googleUser;
+ 
+  if (screen === "signin") {
+    return (
+      <div style={{minHeight:"100vh",background:"linear-gradient(145deg,#08020f 0%,#11052a 55%,#0d1117 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Segoe UI',system-ui,sans-serif",position:"relative",overflow:"hidden"}}>
+        <style>{`
+          @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
+          @keyframes orb{0%,100%{opacity:.2;transform:scale(1)}50%{opacity:.45;transform:scale(1.06)}}
+          @keyframes spin{to{transform:rotate(360deg)}}
+          .orb{position:absolute;border-radius:50%;filter:blur(90px);animation:orb 5s ease-in-out infinite}
+          .gbtn:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(168,85,247,0.35)!important}
+          .gbtn{transition:all .2s}
+          .mrow:hover{background:rgba(255,255,255,0.07)!important}
+          .mrow{transition:background .15s}
+        `}</style>
+        <div className="orb" style={{width:500,height:500,background:"rgba(168,85,247,0.2)",top:"-160px",left:"-160px"}}/>
+        <div className="orb" style={{width:360,height:360,background:"rgba(99,102,241,0.13)",bottom:"-80px",right:"5%",animationDelay:"2.5s"}}/>
+        <div className="orb" style={{width:200,height:200,background:"rgba(14,165,233,0.1)",top:"30%",right:"12%",animationDelay:"1.2s"}}/>
+        <div style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(28px)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:28,padding:"52px 48px",maxWidth:440,width:"90%",textAlign:"center",boxShadow:"0 40px 100px rgba(0,0,0,0.6)",position:"relative",zIndex:1}}>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:22,animation:"float 3.5s ease-in-out infinite"}}><Logo size={80}/></div>
+          <h1 style={{color:"white",fontSize:34,fontWeight:800,margin:"0 0 5px",letterSpacing:"-0.8px"}}>Neuro Note</h1>
+          <p style={{color:"rgba(168,85,247,0.75)",fontSize:13,margin:"0 0 5px",fontWeight:500}}>by Diyan Malik</p>
+          <p style={{color:"rgba(255,255,255,0.4)",fontSize:14,margin:"0 0 32px",lineHeight:1.6}}>Your intelligent AI companion for learning, research and more.</p>
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:32}}>
+            {MODES.map(m => (
+              <div key={m.id} className="mrow" style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"rgba(255,255,255,0.04)",borderRadius:12,border:"1px solid rgba(255,255,255,0.07)",textAlign:"left"}}>
+                <span style={{fontSize:20}}>{m.icon}</span>
+                <div><div style={{color:"white",fontSize:13,fontWeight:700}}>{m.label}</div><div style={{color:"rgba(255,255,255,0.38)",fontSize:11}}>{m.desc}</div></div>
+                <div style={{marginLeft:"auto",width:8,height:8,borderRadius:"50%",background:m.color,boxShadow:"0 0 8px "+m.color,flexShrink:0}}/>
+              </div>
+            ))}
+          </div>
+          <button className="gbtn" onClick={handleGoogleSignIn} disabled={signingIn} style={{width:"100%",padding:"14px 24px",background:"white",color:"#111",border:"none",borderRadius:14,fontSize:15,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,boxShadow:"0 4px 20px rgba(0,0,0,0.3)"}}>
+            {signingIn ? (
+              <><div style={{width:20,height:20,border:"2px solid #ddd",borderTop:"2px solid #7c3aed",borderRadius:"50%",animation:"spin .8s linear infinite"}}/> Connecting to Google...</>
+            ) : (
+              <><svg width="20" height="20" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>Continue with Google</>
+            )}
+          </button>
+          {signInError && <p style={{color:"#f87171",fontSize:12,marginTop:14,background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,padding:"8px 12px"}}>{signInError}</p>}
+          <p style={{color:"rgba(255,255,255,0.18)",fontSize:11,marginTop:14}}>By continuing you agree to Neuro Note Terms · by Diyan Malik</p>
+        </div>
+      </div>
+    );
+  }
+ 
+  return (
+    <div onDrop={e=>{e.preventDefault();handleFiles(Array.from(e.dataTransfer.files));}} onDragOver={e=>e.preventDefault()} style={{display:"flex",height:"100vh",background:"#08020f",fontFamily:"'Segoe UI',system-ui,sans-serif",color:"white",overflow:"hidden"}}>
+      <style>{`
+        @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-8px)}}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes tp{0%,100%{opacity:.55}50%{opacity:1}}
+        .mi{animation:fadeIn .25s ease}
+        .sndbtn:hover:not(:disabled){background:#7c3aed!important;transform:scale(1.05)}
+        .sndbtn{transition:all .15s}
+        .stpbtn:hover{background:rgba(239,68,68,.22)!important}
+        .stpbtn{transition:all .15s}
+        .chip:hover{opacity:.8;transform:scale(1.04)}
+        .chip{transition:all .15s;cursor:pointer;user-select:none}
+        .ci:hover{background:rgba(255,255,255,.07)!important}
+        .ci{transition:background .12s;cursor:pointer}
+        .atbtn:hover{background:rgba(255,255,255,.1)!important}
+        .atbtn{transition:background .15s;cursor:pointer}
+        .iw:focus-within{border-color:rgba(168,85,247,.5)!important}
+        ::-webkit-scrollbar{width:3px}
+        ::-webkit-scrollbar-track{background:transparent}
+        ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px}
+      `}</style>
+ 
+      {sidebarOpen && (
+        <div style={{width:256,background:"rgba(255,255,255,0.025)",borderRight:"1px solid rgba(255,255,255,0.07)",display:"flex",flexDirection:"column",padding:"14px 10px",gap:5,flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:9,padding:"6px 8px 14px",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+            <Logo size={30}/>
+            <div><div style={{fontWeight:800,fontSize:15,letterSpacing:"-0.3px"}}>Neuro Note</div><div style={{fontSize:10,color:"rgba(168,85,247,.65)"}}>by Diyan Malik</div></div>
+          </div>
+          <button onClick={newChat} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",background:"rgba(168,85,247,.15)",border:"1px solid rgba(168,85,247,.3)",borderRadius:10,color:"white",fontSize:13,cursor:"pointer",fontWeight:600}}>
+            ✏️ New chat
+          </button>
+          <button onClick={()=>setScreen("signin")} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"transparent",border:"1px solid rgba(255,255,255,.08)",borderRadius:10,color:"rgba(255,255,255,.45)",fontSize:13,cursor:"pointer",fontWeight:500}}>
+            ← Back
+          </button>
+          <div style={{fontSize:10,color:"rgba(255,255,255,.22)",padding:"6px 8px 2px",textTransform:"uppercase",letterSpacing:".8px"}}>Conversations</div>
+          <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:2}}>
+            {conversations.length === 0 && <div style={{padding:"12px 8px",fontSize:12,color:"rgba(255,255,255,.2)",textAlign:"center"}}>No conversations yet</div>}
+            {conversations.map(c => (
+              <div key={c.id} className="ci" onClick={()=>switchConv(c.id)} style={{padding:"8px 10px",borderRadius:8,fontSize:12,background:c.id===activeConvId?"rgba(168,85,247,.15)":"transparent",border:c.id===activeConvId?"1px solid rgba(168,85,247,.22)":"1px solid transparent",color:c.id===activeConvId?"white":"rgba(255,255,255,.52)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                {"💬 "}{c.title}
+              </div>
+            ))}
+          </div>
+          <div style={{borderTop:"1px solid rgba(255,255,255,.07)",paddingTop:10,display:"flex",alignItems:"center",gap:9}}>
+            {user.picture
+              ? <img src={user.picture} style={{width:32,height:32,borderRadius:"50%",border:"2px solid rgba(168,85,247,.4)",flexShrink:0}} alt="pfp"/>
+              : <div style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#a855f7,#7c3aed)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,flexShrink:0}}>{user.name[0]}</div>
+            }
+            <div style={{overflow:"hidden"}}>
+              <div style={{fontSize:12,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user.name}</div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,.32)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user.email}</div>
+            </div>
+          </div>
+        </div>
+      )}
+ 
+      <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 18px",borderBottom:"1px solid rgba(255,255,255,.07)",background:"rgba(0,0,0,.3)",flexShrink:0}}>
+          <button onClick={()=>setSidebarOpen(s=>!s)} style={{background:"transparent",border:"none",color:"rgba(255,255,255,.4)",cursor:"pointer",fontSize:18,padding:4,borderRadius:6,lineHeight:1}}>{"☰"}</button>
+          <div style={{display:"flex",gap:5}}>
+            {MODES.map(m => (
+              <div key={m.id} className="chip" onClick={()=>setMode(m)} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 13px",borderRadius:20,fontSize:12,fontWeight:600,background:mode.id===m.id?m.color:"rgba(255,255,255,.05)",border:"1px solid "+(mode.id===m.id?m.color:"rgba(255,255,255,.09)"),color:mode.id===m.id?"white":"rgba(255,255,255,.42)"}}>
+                {m.icon}{" "}{m.label}
+              </div>
+            ))}
+          </div>
+          <div style={{marginLeft:"auto",fontSize:11,color:"rgba(255,255,255,.25)"}}>
+            <span style={{color:mode.color,fontWeight:700}}>{mode.label}</span>{" active"}
+          </div>
+        </div>
+ 
+        <div style={{flex:1,overflowY:"auto",padding:"20px 0"}}>
+          {messages.length === 0 && (
+            <div style={{textAlign:"center",padding:"64px 24px",animation:"fadeIn .5s ease"}}>
+              <div style={{display:"flex",justifyContent:"center",marginBottom:18}}><Logo size={62}/></div>
+              <h2 style={{fontSize:26,fontWeight:800,margin:"0 0 7px",letterSpacing:"-0.6px"}}>{"Hi "}{user.name.split(" ")[0]}{" 👋"}</h2>
+              <p style={{color:"rgba(168,85,247,.7)",fontSize:13,margin:"0 0 6px",fontWeight:500}}>by Diyan Malik</p>
+              <p style={{color:"rgba(255,255,255,.38)",fontSize:14,margin:"0 0 32px",lineHeight:1.6}}>
+                {"In "}<span style={{color:mode.color,fontWeight:700}}>{mode.label}</span>{" — "}{mode.desc}
+              </p>
+              <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",maxWidth:640,margin:"0 auto"}}>
+                {(mode.id==="study"
+                  ? ["📐 Explain the Pythagorean theorem with real examples","🧬 How does DNA replication actually work?","📜 What caused World War 1? Help me study"]
+                  : mode.id==="think"
+                  ? ["🌍 Deep dive into the root causes of climate change","🧠 Analyse the philosophy of consciousness and free will","🔬 Research the implications of quantum computing"]
+                  : ["⚡ Write a Python binary search function","📊 Best structure for a startup pitch deck?","✍️ Write a cover letter for a software engineer"]
+                ).map(s => (
+                  <div key={s} onClick={()=>{setInput(s);inputRef.current&&inputRef.current.focus();}} style={{padding:"10px 16px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.09)",borderRadius:10,fontSize:13,color:"rgba(255,255,255,.62)",cursor:"pointer",textAlign:"left",lineHeight:1.4,transition:"all .15s"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,.09)"}
+                    onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,.05)"}
+                  >{s}</div>
+                ))}
+              </div>
+            </div>
+          )}
+ 
+          {messages.map((m, i) => (
+            <div key={i} className="mi" style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",padding:"5px 20px",alignItems:"flex-start"}}>
+              {m.role==="assistant" && <div style={{marginRight:8,marginTop:3,flexShrink:0}}><Logo size={26}/></div>}
+              <div style={{maxWidth:"74%"}}>
+                {m.role==="user" && m.files && m.files.length > 0 && (
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6,justifyContent:"flex-end"}}>
+                    {m.files.map((f,fi)=><FileChip key={fi} file={f}/>)}
+                  </div>
+                )}
+                <div style={{padding:"11px 15px",borderRadius:m.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",background:m.role==="user"?"linear-gradient(135deg,#6d28d9,#a855f7)":"rgba(255,255,255,.055)",border:m.role==="assistant"?"1px solid rgba(255,255,255,.08)":"none",fontSize:14,lineHeight:1.65,wordBreak:"break-word"}}>
+                  {m.role==="assistant" ? renderMd(m.content) : m.content}
+                  {m.role==="assistant" && m.mode && (
+                    <div style={{marginTop:8,paddingTop:6,borderTop:"1px solid rgba(255,255,255,.07)",fontSize:10,color:"rgba(255,255,255,.22)"}}>
+                      {MODES.find(x=>x.id===m.mode)&&MODES.find(x=>x.id===m.mode).icon}{" "}{MODES.find(x=>x.id===m.mode)&&MODES.find(x=>x.id===m.mode).label}{" · Neuro Note"}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {m.role==="user" && (
+                user.picture
+                  ? <img src={user.picture} style={{width:26,height:26,borderRadius:"50%",marginLeft:8,marginTop:3,flexShrink:0}} alt="pfp"/>
+                  : <div style={{width:26,height:26,borderRadius:"50%",background:"linear-gradient(135deg,#a855f7,#7c3aed)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,marginLeft:8,marginTop:3,flexShrink:0}}>{user.name[0]}</div>
+              )}
+            </div>
+          ))}
+ 
+          {loading && !thinking && (
+            <div style={{display:"flex",padding:"5px 20px",alignItems:"center",gap:8}}>
+              <Logo size={26}/>
+              <div style={{background:"rgba(255,255,255,.055)",border:"1px solid rgba(255,255,255,.08)",borderRadius:"18px 18px 18px 4px",display:"flex",gap:5,alignItems:"center",padding:"11px 16px"}}>
+                {[0,1,2].map(j=><div key={j} style={{width:7,height:7,borderRadius:"50%",background:"#a855f7",animation:"bounce 1.2s "+(j*.2)+"s infinite ease-in-out"}}/>)}
+              </div>
+            </div>
+          )}
+          {thinking && (
+            <div style={{display:"flex",padding:"5px 20px",alignItems:"center",gap:8}}>
+              <Logo size={26}/>
+              <div style={{background:"rgba(14,165,233,.08)",border:"1px solid rgba(14,165,233,.3)",borderRadius:"18px 18px 18px 4px",padding:"11px 18px",display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:13,height:13,border:"2px solid rgba(14,165,233,.3)",borderTop:"2px solid #0ea5e9",borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
+                <span style={{fontSize:13,color:"#38bdf8",animation:"tp 1.5s infinite"}}>{"🧠 Thinking deeply… "}{thinkTimer}{"s / 15s"}</span>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef}/>
+        </div>
+ 
+        <div style={{padding:"10px 20px 18px",background:"rgba(0,0,0,.12)"}}>
+          {attachments.length > 0 && (
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+              {attachments.map((f,i)=><FileChip key={i} file={f} onRemove={()=>setAttachments(prev=>prev.filter((_,j)=>j!==i))}/>)}
+            </div>
+          )}
+          <div className="iw" style={{display:"flex",alignItems:"flex-end",gap:8,background:"rgba(255,255,255,.055)",border:"1px solid rgba(255,255,255,.1)",borderRadius:16,padding:"9px 11px",transition:"border-color .2s"}}>
+            <button className="atbtn" onClick={()=>fileInputRef.current&&fileInputRef.current.click()} title="Attach files (max 30MB each)" style={{width:34,height:34,borderRadius:9,border:"none",background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{"📎"}</button>
+            <input ref={fileInputRef} type="file" multiple style={{display:"none"}} onChange={e=>{handleFiles(Array.from(e.target.files));e.target.value="";}}/>
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={e=>setInput(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}}
+              placeholder={"Message Neuro Note ("+mode.label+")…"}
+              rows={1}
+              style={{flex:1,background:"transparent",border:"none",outline:"none",color:"white",fontSize:14,resize:"none",lineHeight:1.65,maxHeight:160,overflowY:"auto",fontFamily:"inherit"}}
+              onInput={e=>{e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,160)+"px";}}
+            />
+            {loading && (
+              <button className="stpbtn" onClick={stopGeneration} title="Stop generation" style={{width:34,height:34,borderRadius:9,border:"1px solid rgba(239,68,68,.4)",background:"rgba(239,68,68,.1)",color:"#f87171",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,cursor:"pointer"}}>{"⏹"}</button>
+            )}
+            <button className="sndbtn" onClick={sendMessage} disabled={(!input.trim()&&attachments.length===0)||loading} style={{width:34,height:34,borderRadius:9,border:"none",background:(input.trim()||attachments.length>0)&&!loading?"#a855f7":"rgba(255,255,255,.08)",color:"white",cursor:(input.trim()||attachments.length>0)&&!loading?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{"↑"}</button>
+          </div>
+          <div style={{textAlign:"center",marginTop:7,fontSize:10,color:"rgba(255,255,255,.16)"}}>{"Neuro Note by Diyan Malik · AI can make mistakes · Max 30MB per file · Drag & drop files supported"}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
